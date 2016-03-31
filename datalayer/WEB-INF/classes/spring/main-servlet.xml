@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+ Copyright (c) 2016 Project Vision Inc.
+ All Rights Reserved
+
+ This software contains the intellectual property of Project Vision Inc.
+ or is licensed to Project Vision Inc. from third parties. Use of this
+ software and the intellectual property contained therein is expressly limited
+ to the terms and conditions of the License Agreement under which it is
+ provided by or on behalf of Project Vision Inc.
+ -->
+<beans xmlns="http://www.springframework.org/schema/beans"
+  xmlns:mvc="http://www.springframework.org/schema/mvc"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:context="http://www.springframework.org/schema/context"
+  xmlns:tx="http://www.springframework.org/schema/tx"
+  xsi:schemaLocation="http://www.springframework.org/schema/mvc http://www.springframework.org/schema/mvc/spring-mvc-4.2.xsd
+    http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+    http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.2.xsd
+    http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx-4.2.xsd">
+
+  <!-- Common Application Configuration from the common project -->
+  <import resource="classpath:spring/common-app-config.xml"/>
+
+  <context:annotation-config />
+
+  <context:component-scan base-package="com.projectvision.healthapp" />
+
+  <context:property-placeholder location="classpath:datalayerOverride.properties" order="-1"
+                                ignore-unresolvable="true" ignore-resource-not-found="true" />
+  <context:property-placeholder location="classpath:datalayer.properties"/>
+
+  <mvc:resources mapping="/resources/**" location="/resources/" />
+  <mvc:annotation-driven>
+    <mvc:message-converters>
+      <bean class="org.springframework.http.converter.json.MappingJackson2HttpMessageConverter">
+        <property name="objectMapper" ref="customObjectMapper" />
+      </bean>
+    </mvc:message-converters>
+  </mvc:annotation-driven>
+  <mvc:default-servlet-handler/>
+  <mvc:interceptors>
+    <bean id="localeChangeInterceptor" class="org.springframework.web.servlet.i18n.LocaleChangeInterceptor">
+      <property name="paramName" value="lang"/>
+    </bean>
+  </mvc:interceptors>
+
+  <tx:annotation-driven />
+
+  <bean id="mongoDBFactory" class="com.projectvision.healthapp.datalayer.util.CustomMongoDbFactory">
+    <constructor-arg name="url" type="String" value="${mongodb.uri}" />
+  </bean>
+
+  <!-- MongoTemplate for connecting and querying the documents in the database -->
+  <bean id="mongoTemplate" class="org.springframework.data.mongodb.core.MongoTemplate">
+    <constructor-arg name="mongoDbFactory" ref="mongoDBFactory" />
+  </bean>
+
+  <!-- Use this post processor to translate any MongoExceptions thrown in @Repository annotated classes -->
+  <bean class="org.springframework.dao.annotation.PersistenceExceptionTranslationPostProcessor" />
+
+  <bean id="dataSource" class="org.springframework.jdbc.datasource.DriverManagerDataSource">
+    <property name="driverClassName" value="${jdbc.driverClassName}" />
+    <property name="url" value="${jdbc.url}" />
+  </bean>
+
+  <bean id="entityManagerFactory" class="org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean">
+    <property name="dataSource" ref="dataSource" />
+    <property name="packagesToScan" value="com.projectvision.healthapp.model" />
+    <property name="jpaVendorAdapter">
+      <bean class="org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter" />
+    </property>
+    <property name="jpaProperties">
+      <props>
+        <prop key="hibernate.hbm2ddl.auto">${hibernate.hbm2ddl.auto}</prop>
+        <prop key="hibernate.show_sql">${hibernate.show_sql}</prop>
+        <prop key="hibernate.dialect">${hibernate.dialect}</prop>
+      </props>
+    </property>
+  </bean>
+
+  <bean id="transactionManager" class="org.springframework.orm.jpa.JpaTransactionManager">
+    <property name="entityManagerFactory" ref="entityManagerFactory" />
+  </bean>
+
+  <!-- Unfortunately we have to repeat an instance of this class here because the mvc:message-converters element above
+         does not support <ref/> elements so we end up duplicating the bean -->
+  <bean id="jacksonHttpMessageConverter"
+        class="org.springframework.http.converter.json.MappingJackson2HttpMessageConverter">
+    <property name="objectMapper" ref="customObjectMapper" />
+  </bean>
+
+  <!-- Allow Exceptions to be handled in annotated methods if desired.  Otherwise fallback to the
+         'restExceptionResolver' below: -->
+  <bean id="annotationMethodHandlerExceptionResolver"
+        class="org.springframework.web.servlet.mvc.annotation.AnnotationMethodHandlerExceptionResolver">
+    <property name="order" value="0"/>
+  </bean>
+  <bean id="restExceptionResolver" class="com.projectvision.healthapp.common.errorhandler.RestExceptionHandler">
+    <property name="order" value="100"></property>
+    <property name="messageConverters">
+      <list> <ref bean="jacksonHttpMessageConverter"/> </list>
+    </property>
+    <!-- errorResolver Bean is inherited from common-app-config.xml imported at the top -->
+    <property name="errorResolver" ref="errorResolver" />
+  </bean>
+
+  <bean id="resetPasswordExpiryTime" class="java.lang.Long">
+    <constructor-arg value="${resetPassword.expiryTime}" />
+  </bean>
+
+  <bean id="taskExecutor" class="org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor">
+    <property name="corePoolSize" value="${taskExecutor.corePoolSize}" />
+    <property name="maxPoolSize" value="${taskExecutor.maxPoolSize}" />
+    <property name="queueCapacity" value="${taskExecutor.queueCapacity}" />
+  </bean>
+
+  <bean id="herokuAlgoUrl" class="java.lang.String">
+    <constructor-arg value="${herokuAlgoUrl}" />
+  </bean>
+  
+    <bean id="connectionManager" class="org.apache.http.impl.conn.PoolingHttpClientConnectionManager">
+    <property name="maxTotal" value="${httpclient.pool.maxTotalConnection}"/>
+    <property name="defaultMaxPerRoute" value="${httpclient.pool.defaultMaxPerRouteConnection}" />
+  </bean>
+
+  <bean id="requestConfigBuilder" class="org.apache.http.client.config.RequestConfig" factory-method="custom">
+    <property name="socketTimeout" value="${httpclient.socketTimeoutInMillis}" />
+    <property name="connectTimeout" value="${httpclient.connectionTimeoutInMillis}" />
+  </bean>
+
+  <bean id="requestConfig" factory-bean="requestConfigBuilder" factory-method="build" />
+
+  <bean id="httpClientBuilder" class="org.apache.http.impl.client.HttpClientBuilder" factory-method="create">
+    <property name="defaultRequestConfig" ref="requestConfig" />
+    <property name="connectionManager" ref="connectionManager" />
+  </bean>
+
+  <bean id="httpClient" factory-bean="httpClientBuilder" factory-method="build" />
+
+  <bean id="clientRequestFactory" class="org.springframework.http.client.HttpComponentsClientHttpRequestFactory">
+    <constructor-arg ref="httpClient" />
+  </bean>
+
+  <bean id="restTemplate" class="org.springframework.web.client.RestTemplate">
+    <constructor-arg ref="clientRequestFactory" />
+  </bean>
+  
+  <!-- Include a swagger configuration-->
+  <bean name="/applicationSwaggerConfig" class="com.projectvision.healthapp.datalayer.util.SwaggerConfiguration"/>
+</beans>
