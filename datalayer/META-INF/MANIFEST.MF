@@ -1,7 +1,0 @@
-Manifest-Version: 1.0
-
-Name: datalayer
-Specification-Title: Java and Spring based HealthApp DataLayer
-Specification-Version: 1.0-925-gc31185b
-Specification-Vendor: ProjectVision Inc.
-
