@@ -1,1 +1,1 @@
-web: /usr/local/tomcat/bin/catalina.sh run
+web: /usr/bin/env.sh && /usr/local/tomcat/bin/catalina.sh run
